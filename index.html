@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>写真クロップ＆印刷アプリ</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css">
+    <style>
+        body {
+            font-family: sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .container {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+        .controls {
+            min-width: 300px;
+            flex: 1;
+        }
+        .preview-container {
+            flex: 2;
+            min-width: 500px;
+        }
+        .img-container {
+            max-width: 100%;
+            height: 500px;
+            background-color: #f0f0f0;
+        }
+        img {
+            max-width: 100%;
+            max-height: 100%;
+        }
+        .preview {
+            width: 100%;
+            height: 300px;
+            border: 1px solid #ccc;
+            background-color: #ddd;
+            overflow: hidden;
+            margin-top: 20px;
+        }
+        select, button {
+            padding: 8px;
+            margin: 5px 0;
+            width: 100%;
+        }
+        .section {
+            margin-bottom: 20px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        h2 {
+            margin-top: 0;
+            font-size: 1.2em;
+        }
+        .rotate-controls {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        .custom-size {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        .custom-size input {
+            width: 100px;
+        }
+    </style>
+</head>
+<body>
+    <h1>写真クロップ＆印刷アプリ</h1>
+    
+    <div class="container">
+        <div class="controls">
+            <div class="section">
+                <h2>1. 画像をアップロード</h2>
+                <input type="file" accept="image/*" id="imageInput">
+            </div>
+
+            <div class="section">
+                <h2>2. 写真サイズを選択</h2>
+                <select id="photoSize">
+                    <option value="4cut">タテ 4つ切り (375mm × 450mm)</option>
+                    <option value="8cut">タテ 8つ切り (270mm × 375mm)</option>
+                    <option value="16cut">タテ 16つ切り (190mm × 270mm)</option>
+                    <option value="landscape4cut">ヨコ (450mm × 375mm)</option>
+                    <option value="landscape8cut">ヨコ (375mm × 270mm)</option>
+                    <option value="landscape16cut">ヨコ (270mm × 190mm)</option>
+                    <option value="custom">カスタム</option>
+                </select>
+                <div class="custom-size" id="customPhotoSize" style="display: none;">
+                    <input type="number" id="customPhotoWidth" placeholder="幅 (mm)">
+                    <input type="number" id="customPhotoHeight" placeholder="高さ (mm)">
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>3. 用紙サイズを選択</h2>
+                <select id="paperSize">
+                    <option value="a3">タテ A3 (297mm × 420mm)</option>
+                    <option value="a4">タテ A4 (210mm × 297mm)</option>
+                    <option value="landscapeA3">ヨコ A3 (420mm × 297mm)</option>
+                    <option value="landscapeA4">ヨコ A4 (297mm × 210mm)</option>
+                    <option value="custom">カスタム</option>
+                </select>
+                <div class="custom-size" id="customPaperSize" style="display: none;">
+                    <input type="number" id="customPaperWidth" placeholder="幅 (mm)">
+                    <input type="number" id="customPaperHeight" placeholder="高さ (mm)">
+                </div>
+                <div class="rotate-controls">
+                    <button id="rotateLeft">左に90度回転</button>
+                    <button id="rotateRight">右に90度回転</button>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>4. PDF出力</h2>
+                <button id="generatePDF">PDFを生成</button>
+            </div>
+        </div>
+
+        <div class="preview-container">
+            <div class="img-container">
+                <img id="image" alt="アップロードした画像">
+            </div>
+            <div class="preview" id="preview"></div>
+        </div>
+    </div>
+
+    <script>
+        window.jsPDF = window.jspdf.jsPDF;
+
+        let cropper = null;
+        const photoSizes = {
+            '4cut': { width: 375, height: 450 },
+            '8cut': { width: 270, height: 375 },
+            '16cut': { width: 190, height: 270 },
+            'landscape4cut': { width: 450, height: 375 },
+            'landscape8cut': { width: 375, height: 270 },
+            'landscape16cut': { width: 270, height: 190 }
+        };
+        const paperSizes = {
+            'a3': { width: 297, height: 420 },
+            'a4': { width: 210, height: 297 },
+            'landscapeA3': { width: 420, height: 297 },
+            'landscapeA4': { width: 297, height: 210 }
+        };
+
+        // 画像アップロード処理
+        document.getElementById('imageInput').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const image = document.getElementById('image');
+                    image.src = e.target.result;
+                    
+                    if (cropper) {
+                        cropper.destroy();
+                    }
+
+                    // Cropper.jsの初期化
+                    cropper = new Cropper(image, {
+                        viewMode: 1,
+                        aspectRatio: getAspectRatio(),
+                        preview: '#preview',
+                        autoCropArea: 1,
+                    });
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        // アスペクト比の計算
+        function getAspectRatio() {
+            const photoSize = document.getElementById('photoSize').value;
+            if (photoSize === 'custom') {
+                const width = document.getElementById('customPhotoWidth').value;
+                const height = document.getElementById('customPhotoHeight').value;
+                return width / height;
+            }
+            const size = photoSizes[photoSize];
+            return size.width / size.height;
+        }
+
+        // 写真サイズ変更時の処理
+        document.getElementById('photoSize').value = '8cut'; // デフォルトを8つ切りに設定
+
+        document.getElementById('photoSize').addEventListener('change', function() {
+            const customPhotoSize = document.getElementById('customPhotoSize');
+            if (this.value === 'custom') {
+                customPhotoSize.style.display = 'flex';
+            } else {
+                customPhotoSize.style.display = 'none';
+                if (cropper) {
+                    cropper.setAspectRatio(getAspectRatio());
+                }
+                autoSelectPaperSize();
+            }
+        });
+
+        // 用紙サイズ変更時の処理
+        document.getElementById('paperSize').addEventListener('change', function() {
+            const customPaperSize = document.getElementById('customPaperSize');
+            if (this.value === 'custom') {
+                customPaperSize.style.display = 'flex';
+            } else {
+                customPaperSize.style.display = 'none';
+            }
+            manualPaperSizeSelection = true;
+        });
+
+        let manualPaperSizeSelection = false;
+
+        function autoSelectPaperSize() {
+            if (manualPaperSizeSelection) return;
+
+            const photoSize = document.getElementById('photoSize').value;
+            let photoSizeData;
+
+            if (photoSize === 'custom') {
+                photoSizeData = {
+                    width: parseFloat(document.getElementById('customPhotoWidth').value),
+                    height: parseFloat(document.getElementById('customPhotoHeight').value)
+                };
+            } else {
+                photoSizeData = photoSizes[photoSize];
+            }
+
+            const paperSizeSelect = document.getElementById('paperSize');
+            let selectedOption = null;
+            for (const option of paperSizeSelect.options) {
+                if (option.value === 'custom') continue;
+                const paperSizeData = paperSizes[option.value];
+                if (photoSizeData.width <= paperSizeData.width && photoSizeData.height <= paperSizeData.height) {
+                    selectedOption = option;
+                    break;
+                }
+            }
+            if (selectedOption) {
+                paperSizeSelect.value = selectedOption.value;
+            }
+        }
+
+        document.getElementById('customPhotoWidth').addEventListener('input', autoSelectPaperSize);
+        document.getElementById('customPhotoHeight').addEventListener('input', autoSelectPaperSize);
+
+        // 画像回転処理
+        document.getElementById('rotateLeft').addEventListener('click', function() {
+            if (cropper) {
+                cropper.rotate(-90);
+            }
+        });
+
+        document.getElementById('rotateRight').addEventListener('click', function() {
+            if (cropper) {
+                cropper.rotate(90);
+            }
+        });
+
+        // PDF生成処理
+        document.getElementById('generatePDF').addEventListener('click', function() {
+            if (!cropper) {
+                alert('画像をアップロードしてください。');
+                return;
+            }
+
+            const photoSize = document.getElementById('photoSize').value;
+            const paperSize = document.getElementById('paperSize').value;
+            let photoSizeData, paperSizeData;
+
+            if (photoSize === 'custom') {
+                photoSizeData = {
+                    width: parseFloat(document.getElementById('customPhotoWidth').value),
+                    height: parseFloat(document.getElementById('customPhotoHeight').value)
+                };
+            } else {
+                photoSizeData = photoSizes[photoSize];
+            }
+
+            if (paperSize === 'custom') {
+                paperSizeData = {
+                    width: parseFloat(document.getElementById('customPaperWidth').value),
+                    height: parseFloat(document.getElementById('customPaperHeight').value)
+                };
+            } else {
+                paperSizeData = paperSizes[paperSize];
+            }
+
+            // 選択された用紙サイズが写真サイズより小さい場合の警告
+            if (photoSizeData.width > paperSizeData.width || photoSizeData.height > paperSizeData.height) {
+                if (!confirm('選択された写真サイズが用紙サイズより大きいため、画像が切れる可能性があります。続行しますか？')) {
+                    return;
+                }
+            }
+
+            // PDF用にクロップした画像を取得
+            const canvas = cropper.getCroppedCanvas({
+                width: photoSizeData.width * 2.835, // mmをポイントに変換（72dpi）
+                height: photoSizeData.height * 2.835
+            });
+
+            // PDFの生成
+            const pdf = new jsPDF({
+                orientation: paperSizeData.width > paperSizeData.height ? 'l' : 'p',
+                unit: 'mm',
+                format: [paperSizeData.width, paperSizeData.height]
+            });
+
+            // 画像をPDFの中央に配置
+            const x = (paperSizeData.width - photoSizeData.width) / 2;
+            const y = (paperSizeData.height - photoSizeData.height) / 2;
+
+            pdf.addImage(
+                canvas.toDataURL('image/jpeg', 1.0),
+                'JPEG',
+                x,
+                y,
+                photoSizeData.width,
+                photoSizeData.height
+            );
+
+            // PDFの保存
+            const imageName = document.getElementById('imageInput').files[0].name.split('.')[0];
+            const timestamp = new Date().toISOString().replace(/[:\-T]/g, '').split('.')[0];
+            const fileName = `${imageName}-${paperSize}-${timestamp}.pdf`;
+            pdf.save(fileName);
+        });
+
+        // 初期化時に自動選択を実行
+        autoSelectPaperSize();
+    </script>
+</body>
+</html>
