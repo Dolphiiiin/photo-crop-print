@@ -24,7 +24,6 @@
         }
         .preview-container {
             flex: 2;
-            min-width: 500px;
         }
         .img-container {
             max-width: 100%;
@@ -89,9 +88,9 @@
                     <option value="4cut">タテ 4つ切り (375mm × 450mm)</option>
                     <option value="8cut">タテ 8つ切り (270mm × 375mm)</option>
                     <option value="16cut">タテ 16つ切り (190mm × 270mm)</option>
-                    <option value="landscape4cut">ヨコ (450mm × 375mm)</option>
-                    <option value="landscape8cut">ヨコ (375mm × 270mm)</option>
-                    <option value="landscape16cut">ヨコ (270mm × 190mm)</option>
+                    <option value="landscape4cut">ヨコ 4つ切り (450mm × 375mm)</option>
+                    <option value="landscape8cut">ヨコ 8つ切り (375mm × 270mm)</option>
+                    <option value="landscape16cut">ヨコ 16つ切り (270mm × 190mm)</option>
                     <option value="custom">カスタム</option>
                 </select>
                 <div class="custom-size" id="customPhotoSize" style="display: none;">
@@ -300,10 +299,10 @@
                 }
             }
 
-            // PDF用にクロップした画像を取得
+            // PDF用にクロップした画像を取得（解像度を上げる）
             const canvas = cropper.getCroppedCanvas({
-                width: photoSizeData.width * 2.835, // mmをポイントに変換（72dpi）
-                height: photoSizeData.height * 2.835
+                width: photoSizeData.width * 20, // 解像度を上げるために倍率を変更
+                height: photoSizeData.height * 20
             });
 
             // PDFの生成
